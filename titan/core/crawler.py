@@ -36,7 +36,19 @@ class BaseCrawler:
         
         logger.info(f"Starting BaseCrawler fleet with base concurrency of {self.concurrency}")
         self.workers = [asyncio.create_task(self._worker_loop(handler_func)) for _ in range(self.concurrency)]
-        await asyncio.gather(*self.workers, return_exceptions=True)
+
+    async def wait_for_completion(self):
+        """Waits until the request queue is completely drained and no tasks are in progress."""
+        while self.running:
+            if await self.request_queue.is_finished():
+                logger.info("Request queue is empty and all tasks completed. Shutting down...")
+                await self.stop()
+                break
+            await asyncio.sleep(1)
+        
+        # Wait for workers to finish current loops and exit
+        if self.workers:
+            await asyncio.gather(*self.workers, return_exceptions=True)
 
     async def _worker_loop(self, handler_func: Callable[[CrawlRequest, Any], Coroutine[Any, Any, None]]):
         """Dedicated worker executing page scrapes from the request queue."""
@@ -59,6 +71,7 @@ class BaseCrawler:
             
             try:
                 logger.info(f"Worker processing request: {req.url}")
+                await page.goto(req.url, wait_until="domcontentloaded")
                 # Execute user-defined page handler hook
                 await handler_func(req, page)
                 await self.request_queue.complete(req)

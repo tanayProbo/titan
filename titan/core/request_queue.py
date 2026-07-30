@@ -87,3 +87,8 @@ class RequestQueue:
                 logger.info(f"Re-queuing failed page request ({retries + 1}/{retry_limit}): {request.url}")
             else:
                 logger.error(f"Failed to crawl request after maximum retries: {request.url}")
+
+    async def is_finished(self) -> bool:
+        """Returns True if the queue is empty and no tasks are currently in progress."""
+        async with self._lock:
+            return self.queue.empty() and len(self.in_progress) == 0
